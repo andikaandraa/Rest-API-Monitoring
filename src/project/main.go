@@ -19,8 +19,10 @@ import (
 )
 
 var (
-	cb    *circuit.Breaker
-	total int
+	cb              *circuit.Breaker
+	total           int
+	successRequests float64
+	failureRequests float64
 )
 
 // ObjDB represent object database
@@ -44,6 +46,9 @@ func (objDB *ObjDB) HandleRoute(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			total = total + 1
+			failureRequests = failureRequests + 1
+		} else {
+			successRequests = successRequests + 1
 		}
 		return err
 	}, 0)
@@ -81,7 +86,14 @@ func handleRequest(port string) {
 	},
 		[]string{"percent"},
 	)
-	prometheus.MustRegister(memoryPercent)
+
+	requestsRate := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "requests_rate",
+		Help: "requests rate",
+	},
+		[]string{"requests"},
+	)
+	prometheus.MustRegister(requestsRate)
 
 	go func() {
 		http.ListenAndServe(port, router)
@@ -97,6 +109,9 @@ func handleRequest(port string) {
 		usedPercent := v.UsedPercent
 		// logger.Println("get memory use percent:", usedPercent)
 		memoryPercent.WithLabelValues("usedMemory").Set(usedPercent)
+		requestsRate.WithLabelValues("successRequests").Set(successRequests)
+		requestsRate.WithLabelValues("failureRequests").Set(failureRequests)
+
 		time.Sleep(time.Second * 2)
 	}
 
